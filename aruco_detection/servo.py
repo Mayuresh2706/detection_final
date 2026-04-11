@@ -1,8 +1,8 @@
 import lgpio
 import time
 
-# RPi5 uses gpiochip4
-GPIOCHIP = 4
+# RPi4B uses gpiochip4
+GPIOCHIP = 0
 
 # Pulse widths in microseconds — calibrated from ESP32 values
 # ESP32 duty/1023 * 20000us = pulse width
@@ -15,9 +15,10 @@ SHOT_PAUSE  = 0.2
 
 
 class MG996R:
-    def __init__(self, pin=18):
+    def __init__(self, pin=12):
         self.pin = pin
         self.chip = lgpio.gpiochip_open(GPIOCHIP)
+        lgpio.gpio_claim_output(self.chip, self.pin)
         lgpio.tx_servo(self.chip, self.pin, STOP_US, FREQ)
 
     def fire(self, count=3):
