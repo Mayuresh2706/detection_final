@@ -26,9 +26,10 @@ class DockingBase(Node):
 
         # State machine
         self.state = 'idle'
+        self.alignment_done = False   # False = standoff pass, True = final approach
 
         # Tuning parameters
-        self.stop_dist = 0.10    # 10cm stop distance from marker
+        self.stop_dist = 0.40    # 10cm stop distance from marker
         self.x_threshold = 0.02  # 2cm lateral alignment tolerance
         self.lin_speed = 0.04    # 4cm/s
         self.ang_speed = 0.2     # rad/s
@@ -103,26 +104,31 @@ class DockingBase(Node):
             self.get_logger().info(f'Marker too far ({marker_z:.2f}m), waiting...')
             return
 
-        if abs(marker_x) > 0.3:
+        if abs(marker_x) > 0.5:
             self.get_logger().info(f'Marker too far sideways ({marker_x:.2f}m), waiting...')
             return
 
+        # Step 1: standoff pass — drive to 0.5m in front of marker
+        # Step 2: final approach — drive to stop_dist
+        target_dist = self.stop_dist if self.alignment_done else 0.5
+        step_label = 'final approach' if self.alignment_done else 'standoff pass'
+
         if abs(marker_x) > self.x_threshold:
             self.angle_to_turn = math.atan2(marker_x, marker_z)
-            self.distance_to_travel = max(0.0, marker_z - self.stop_dist)
+            self.distance_to_travel = max(0.0, marker_z - target_dist)
             self.start_yaw = self.current_yaw
             self.state = 'rotating'
             self.get_logger().info(
-                f'Marker at {marker_z:.2f}m forward, {marker_x:.2f}m sideways — '
+                f'[{step_label}] Marker at {marker_z:.2f}m forward, {marker_x:.2f}m sideways — '
                 f'aligning {math.degrees(self.angle_to_turn):.1f}°, then driving {self.distance_to_travel:.3f}m'
             )
         else:
-            self.distance_to_travel = max(0.0, marker_z - self.stop_dist)
+            self.distance_to_travel = max(0.0, marker_z - target_dist)
             self.start_x = self.current_x
             self.start_y = self.current_y
             self.state = 'driving_to_marker'
             self.get_logger().info(
-                f'Marker at {marker_z:.2f}m forward, {marker_x:.2f}m sideways — '
+                f'[{step_label}] Marker at {marker_z:.2f}m forward, {marker_x:.2f}m sideways — '
                 f'already aligned, driving {self.distance_to_travel:.3f}m'
             )
 
@@ -153,10 +159,15 @@ class DockingBase(Node):
                 (self.current_y - self.start_y) ** 2
             )
             if dist_traveled >= self.distance_to_travel:
-                self.get_logger().info('Reached marker! Docked.')
-                self.state = 'docked'
                 self.cmd_pub.publish(Twist())
-                self.on_docked()
+                if not self.alignment_done:
+                    self.get_logger().info('Standoff reached — re-acquiring marker for final approach.')
+                    self.alignment_done = True
+                    self.state = 'idle'
+                else:
+                    self.get_logger().info('Final approach complete. Docked.')
+                    self.state = 'docked'
+                    self.on_docked()
             else:
                 cmd = Twist()
                 cmd.linear.x = self.lin_speed
@@ -176,6 +187,7 @@ class DockingBase(Node):
     # ------------------------------------------------------------------
     def stop_robot(self):
         self.state = 'idle'
+        self.alignment_done = False
         self.cmd_pub.publish(Twist())
 
     # ------------------------------------------------------------------
