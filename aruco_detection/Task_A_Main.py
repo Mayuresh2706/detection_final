@@ -201,14 +201,14 @@
 #     main()
 
 
-
+import threading
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist, PoseStamped
 from nav_msgs.msg import Odometry
 import math
 from std_msgs.msg import Bool, String
-
+from servo import MG996R
 
 class Task_A_Controller(Node):
     def __init__(self):
@@ -246,6 +246,9 @@ class Task_A_Controller(Node):
         self.rotation_phase = 0
 
         self.is_active = False
+
+        #initiate servo:
+        self.servo = MG996R(pin=18)
 
     def active_cb(self, msg):
         self.is_active = msg.data
@@ -363,6 +366,7 @@ class Task_A_Controller(Node):
         status_msg = String()
         status_msg.data = "SUCCESS"
         self.status_pub.publish(status_msg)
+        threading.Thread(target=self.servo.fire, daemon=True).start()
 
     def stop_robot(self):
         self.state = 'idle'
@@ -388,6 +392,7 @@ def main(args=None):
     finally:
         node.cmd_pub.publish(Twist())
         node.destroy_node()
+        node.servo.close()
         rclpy.shutdown()
 
 if __name__ == '__main__':
