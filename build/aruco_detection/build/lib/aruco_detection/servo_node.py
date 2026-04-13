@@ -13,6 +13,7 @@ class ServoNode(Node):
 
     def fire_cb(self, msg):
         if msg.data:
+            self.get_logger().info('Fired n')
             self.servo.fire(count=1)
 
 
