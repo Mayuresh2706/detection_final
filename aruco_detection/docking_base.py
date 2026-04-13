@@ -339,7 +339,7 @@ class DockingBase(Node):
         now = self.get_clock().now().nanoseconds / 1e9
         marker_age = (now - self.last_marker_time) if self.last_marker_time else 999
 
-        # ── PHASE 0: rotate in place until centred AND square ──
+        # ── PHASE 0: rotate in place until marker is centred laterally ──
         if self.state == 'aligning':
             if marker_age > self.marker_timeout:
                 self.cmd_pub.publish(Twist())
@@ -347,12 +347,13 @@ class DockingBase(Node):
                 return
 
             x = self.last_marker_x
-            rvec_y = self.last_marker_rvec_y
+            z = self.last_marker_z
+            angle_error = math.atan2(x, z)
 
-            if abs(rvec_y) < self.heading_threshold and abs(x) < self.y_threshold:
+            if abs(angle_error) < self.heading_threshold:
                 self.cmd_pub.publish(Twist())
                 self.get_logger().info(
-                    f'Aligned! rvec_y={rvec_y:.3f}rad x={x:.3f}m — '
+                    f'Aligned! angle={math.degrees(angle_error):.1f}° x={x:.3f}m — '
                     f'starting approach...'
                 )
                 self.aligned_count = 0
@@ -362,12 +363,10 @@ class DockingBase(Node):
             cmd = Twist()
             cmd.linear.x = 0.0
             cmd.angular.z = max(-self.ang_speed,
-                                min(self.ang_speed,
-                                    2.0 * rvec_y + 1.5 * x))
+                                min(self.ang_speed, 2.0 * angle_error))
             self.cmd_pub.publish(cmd)
             self.get_logger().info(
-                f'Aligning: rvec_y={rvec_y:.3f}rad '
-                f'({math.degrees(rvec_y):.1f}°) x={x:.3f}m'
+                f'Aligning: angle={math.degrees(angle_error):.1f}° x={x:.3f}m z={z:.3f}m'
             )
 
         # ── PHASE 1: visual servo — drive in while keeping centred ──
