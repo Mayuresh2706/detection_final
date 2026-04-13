@@ -1,4 +1,3 @@
-import threading
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool
@@ -14,7 +13,7 @@ class ServoNode(Node):
 
     def fire_cb(self, msg):
         if msg.data:
-            threading.Thread(target=self.servo.fire, kwargs={'count': 1}, daemon=True).start()
+            self.servo.fire(count=1)
 
 
 def main(args=None):
