@@ -12,7 +12,7 @@ class Task_A_Controller(DockingBase):
 
         # Shot sequencing
         self.shots_fired = 0
-        self.total_shots = 1
+        self.total_shots = 3
         self.shot_interval = 5.0  # seconds between shots
         self.firing = False
 
