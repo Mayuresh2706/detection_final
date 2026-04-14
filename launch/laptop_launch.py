@@ -40,4 +40,21 @@ def generate_launch_description():
             name='task_b_node',
             output='screen'
         ),
+
+        Node(
+            package='explore_lite',
+            executable='explore_node',
+            name='explore_node',
+            output='screen',
+            parameters=[{
+                'robot_base_frame':      'base_link',
+                'costmap_topic':         '/map',
+                'costmap_updates_topic': '/map_updates',
+                'visualize':             True,
+                'planner_frequency':     0.15,
+                'progress_timeout':      30.0,
+                'min_frontier_size':     0.75,
+                'return_to_init':        False,
+            }]
+        ),
     ])

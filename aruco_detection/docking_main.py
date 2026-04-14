@@ -21,7 +21,7 @@ class MissionManager(Node):
         self.tf_buffer = Buffer(cache_time=rclpy.duration.Duration(seconds=5))
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.exp_active_pub  = self.create_publisher(Bool, '/explorer_active', 10)
+        self.exp_active_pub  = self.create_publisher(Bool, 'explore/resume', 10)
         self.task_a_pub      = self.create_publisher(Bool, '/task_a_active', 10)
         self.task_b_pub      = self.create_publisher(Bool, '/task_b_active', 10)
         self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped, '/initialpose', 10)
@@ -39,7 +39,17 @@ class MissionManager(Node):
         self.initial_pose_published = False
         self.create_timer(1.0, self.publish_initial_pose_once)
 
+        self._exploration_started = False
+        self.create_timer(2.0, self._start_exploration_once)
+
         self.get_logger().info('Mission Manager Initialized - SEARCHING')
+
+    def _start_exploration_once(self):
+        if self._exploration_started:
+            return
+        self.exp_active_pub.publish(Bool(data=True))
+        self._exploration_started = True
+        self.get_logger().info('Exploration started')
 
     def publish_initial_pose_once(self):
         if self.initial_pose_published:
