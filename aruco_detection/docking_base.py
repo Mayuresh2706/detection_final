@@ -20,19 +20,22 @@ class DockingBase(Node):
         self.current_yaw = 0.0
 
         # State machine:
-        # idle -> align_front -> turn_face -> visual_approach -> odom_drive -> docked
+        # idle -> drive_to_waypoint -> rotate_to_face -> visual_approach -> odom_drive -> docked
         #
-        # align_front     : drive straight to the point directly in front of the marker
-        # turn_face       : rotate in place until angle to marker is ~0
-        # visual_approach : drive straight toward marker, stop at stop_dist
-        # odom_drive      : fallback if marker is lost near the end
+        # drive_to_waypoint : lock on marker once, compute a waypoint at (marker_x, marker_z - approach_offset)
+        #                     in world frame, turn to face it, drive straight to it via odometry
+        # rotate_to_face    : rotate in place by the trigonometrically computed angle to face the marker
+        #                     (face_heading = initial robot yaw when locked, since the waypoint was
+        #                      placed directly along that axis from the robot to the marker)
+        # visual_approach   : drive straight toward marker with lateral correction, stop at stop_dist
+        # odom_drive        : if marker lost, drive last known z - stop_dist via odometry
         self.state = 'idle'
 
         # Tuning
         self.stop_dist = 0.05           # final stop distance from marker (m)
-        self.lateral_threshold = 0.05   # x-offset threshold for align_front (m)
-        self.yaw_threshold = 0.05       # angle threshold for turn_face (rad)
-        self.x_threshold = 0.04         # x-offset threshold during visual_approach (m)
+        self.approach_offset = 0.30     # waypoint is this far in front of the marker (m)
+        self.yaw_threshold = 0.03       # angle threshold for rotation phases (rad)
+        self.x_threshold = 0.04         # lateral threshold during visual_approach (m)
         self.lin_speed = 0.06           # max linear speed (m/s)
         self.ang_speed = 0.3            # max angular speed (rad/s)
 
@@ -44,24 +47,32 @@ class DockingBase(Node):
         self.last_marker_time = None
         self.marker_timeout = 0.3
 
-        # Odom drive fallback
+        # Odom drive
         self.drive_distance = 0.0
 
         # Approach counter
         self.aligned_count = 0
         self.aligned_frames_needed = 5
 
-        # Lateral alignment sub-phases (used in align_front)
-        # 'turn_to_target' -> rotate to face the lateral waypoint
-        # 'drive_to_target' -> drive straight to it
-        self._align_phase = 'turn_to_target'
-        self._align_target_yaw = None       # heading toward waypoint (None = not yet computed)
-        self._align_target_world_x = 0.0   # world-frame waypoint
-        self._align_target_world_y = 0.0
-        self._align_drive_dist = 0.0
-        self._align_drive_start_x = 0.0
-        self._align_drive_start_y = 0.0
-        self._align_spin_dir = 1            # kept for turn_face recovery direction
+        # Waypoint state — computed once when locking onto the marker
+        #
+        # Geometry explanation:
+        #   Robot at (rx, ry) facing yaw θ sees marker at robot-frame (mx, mz).
+        #   World frame:  marker  = (rx + mz·cosθ − mx·sinθ,  ry + mz·sinθ + mx·cosθ)
+        #                 waypoint = (rx + (mz−offset)·cosθ − mx·sinθ,  ry + (mz−offset)·sinθ + mx·cosθ)
+        #   The vector waypoint→marker is always (offset·cosθ, offset·sinθ), i.e. exactly the
+        #   original robot heading θ regardless of lateral offset mx.
+        #   Therefore face_heading = initial θ (no trigonometric lookup needed at runtime;
+        #   the trig is baked into the waypoint placement).
+        self._wp_computed = False
+        self._wp_world_x = 0.0
+        self._wp_world_y = 0.0
+        self._wp_heading = 0.0          # world heading to turn toward before driving to waypoint
+        self._wp_drive_dist = 0.0       # straight-line distance to waypoint
+        self._face_heading = 0.0        # world heading to face marker once at waypoint (= initial yaw)
+        self._wp_phase = 'turn'         # 'turn' first, then 'drive'
+        self._wp_drive_start_x = 0.0
+        self._wp_drive_start_y = 0.0
 
         # Activation
         self.is_active = False
@@ -89,13 +100,10 @@ class DockingBase(Node):
             self._logged_waiting = False
             self.aligned_count = 0
             self.last_marker_time = None
-            self._align_phase = 'turn_to_target'
-            self._align_target_yaw = None
-            self._align_target_world_x = 0.0
-            self._align_target_world_y = 0.0
-            self._align_drive_dist = 0.0
-            self.state = 'align_front'
-            self.get_logger().info('Activated — computing waypoint to align in front of marker...')
+            self._wp_computed = False
+            self._wp_phase = 'turn'
+            self.state = 'drive_to_waypoint'
+            self.get_logger().info('Activated — waiting for first marker reading to lock waypoint...')
         else:
             self.get_logger().info('Deactivated.')
             self.stop_robot()
@@ -135,145 +143,141 @@ class DockingBase(Node):
 
         now = self.get_clock().now().nanoseconds / 1e9
 
-        # ── STEP 1: Compute the point directly in front of the marker and drive straight to it ──
-        #   Sub-phase A ('turn_to_target'): rotate to face the lateral waypoint
-        #   Sub-phase B ('drive_to_target'): drive straight to that waypoint
-        if self.state == 'align_front':
+        # ── STEP 1: Drive straight to the waypoint offset in front of the marker ──
+        #
+        # The waypoint is computed once from the first good marker reading.
+        # We project the marker position (mx, mz) into world frame and subtract
+        # approach_offset along the robot's forward axis to get the waypoint.
+        # Sub-phase 'turn': rotate to face the waypoint direction.
+        # Sub-phase 'drive': drive straight to it via odometry.
+        if self.state == 'drive_to_waypoint':
 
-            # ── Sub-phase A: compute waypoint once, then rotate to face it ──
-            if self._align_phase == 'turn_to_target':
-                # Only read the marker when we haven't committed to a waypoint yet
-                if self._align_target_yaw is None:
-                    marker_age = (now - self.last_marker_time) if self.last_marker_time else 999
-                    if marker_age > self.marker_timeout:
-                        self.cmd_pub.publish(Twist())
-                        self.get_logger().warn('Align: marker lost — waiting for marker...')
-                        return
-
-                    x = self.last_marker_x  # lateral offset in robot frame
-
-                    if abs(x) < self.lateral_threshold:
-                        self.cmd_pub.publish(Twist())
-                        self.get_logger().info(
-                            f'Already in front of marker (x={x:.3f}m) — turning to face...'
-                        )
-                        self.state = 'turn_face'
-                        return
-
-                    # Project lateral offset into world frame.
-                    # Robot forward = (cos(yaw), sin(yaw)), so robot left = (-sin(yaw), cos(yaw)).
-                    # Positive marker_x means the marker is to the robot's left.
-                    self._align_target_world_x = (
-                        self.current_x + x * (-math.sin(self.current_yaw))
-                    )
-                    self._align_target_world_y = (
-                        self.current_y + x * math.cos(self.current_yaw)
-                    )
-
-                    dx = self._align_target_world_x - self.current_x
-                    dy = self._align_target_world_y - self.current_y
-                    self._align_target_yaw = math.atan2(dy, dx)   # heading toward waypoint
-                    self._align_drive_dist = math.sqrt(dx ** 2 + dy ** 2)
-                    self._align_spin_dir = 1 if x > 0 else -1
-
-                    self.get_logger().info(
-                        f'Align: lateral offset={x:.3f}m — '
-                        f'turning {math.degrees(self._angle_diff(self._align_target_yaw, self.current_yaw)):+.1f}° '
-                        f'then driving {self._align_drive_dist:.3f}m straight to waypoint.'
-                    )
-
-                yaw_err = self._angle_diff(self._align_target_yaw, self.current_yaw)
-                if abs(yaw_err) < 0.05:
-                    self._align_phase = 'drive_to_target'
-                    self._align_drive_start_x = self.current_x
-                    self._align_drive_start_y = self.current_y
+            if not self._wp_computed:
+                marker_age = (now - self.last_marker_time) if self.last_marker_time else 999
+                if marker_age > self.marker_timeout:
                     self.cmd_pub.publish(Twist())
-                    self.get_logger().info('Align turn done — driving straight to waypoint...')
+                    self.get_logger().warn('Drive to waypoint: waiting for marker...')
+                    return
+
+                mx = self.last_marker_x   # lateral offset in robot frame
+                mz = self.last_marker_z   # depth in robot frame
+                yaw = self.current_yaw
+
+                # Waypoint: (mz - approach_offset) forward, mx lateral, projected to world.
+                # Robot forward in world: (cos(yaw), sin(yaw))
+                # Robot left   in world: (-sin(yaw), cos(yaw))
+                fwd = mz - self.approach_offset
+                self._wp_world_x = self.current_x + fwd * math.cos(yaw) - mx * math.sin(yaw)
+                self._wp_world_y = self.current_y + fwd * math.sin(yaw) + mx * math.cos(yaw)
+
+                dx = self._wp_world_x - self.current_x
+                dy = self._wp_world_y - self.current_y
+                self._wp_heading    = math.atan2(dy, dx)
+                self._wp_drive_dist = math.sqrt(dx ** 2 + dy ** 2)
+
+                # After arriving at the waypoint, the marker is exactly approach_offset away
+                # along the original robot heading (yaw). So face_heading = initial yaw.
+                # Trig proof: waypoint→marker vector = (offset·cosθ, offset·sinθ) → atan2 = θ.
+                self._face_heading = yaw
+
+                self._wp_computed = True
+                self.get_logger().info(
+                    f'Waypoint locked: marker x={mx:.3f}m z={mz:.3f}m | '
+                    f'waypoint ({self._wp_world_x:.3f}, {self._wp_world_y:.3f}) '
+                    f'dist={self._wp_drive_dist:.3f}m | '
+                    f'face_heading={math.degrees(self._face_heading):.1f}°'
+                )
+
+            # Sub-phase A: turn to face the waypoint direction
+            if self._wp_phase == 'turn':
+                yaw_err = self._angle_diff(self._wp_heading, self.current_yaw)
+                if abs(yaw_err) < self.yaw_threshold:
+                    self._wp_phase = 'drive'
+                    self._wp_drive_start_x = self.current_x
+                    self._wp_drive_start_y = self.current_y
+                    self.cmd_pub.publish(Twist())
+                    self.get_logger().info(
+                        f'Waypoint turn done — driving {self._wp_drive_dist:.3f}m straight...'
+                    )
                     return
 
                 cmd = Twist()
                 cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, 2.0 * yaw_err))
                 self.cmd_pub.publish(cmd)
-                self.get_logger().info(f'Align turn: yaw_err={math.degrees(yaw_err):.1f}°')
+                self.get_logger().info(f'Waypoint turn: yaw_err={math.degrees(yaw_err):.1f}°')
 
-            # ── Sub-phase B: drive straight (odometry) to the pre-computed waypoint ──
-            elif self._align_phase == 'drive_to_target':
+            # Sub-phase B: drive straight to the waypoint via odometry
+            elif self._wp_phase == 'drive':
                 dist = math.sqrt(
-                    (self.current_x - self._align_drive_start_x) ** 2
-                    + (self.current_y - self._align_drive_start_y) ** 2
+                    (self.current_x - self._wp_drive_start_x) ** 2
+                    + (self.current_y - self._wp_drive_start_y) ** 2
                 )
-                if dist >= self._align_drive_dist:
-                    # Reset for next time, then hand off to turn_face
-                    self._align_phase = 'turn_to_target'
-                    self._align_target_yaw = None
-                    self._align_drive_dist = 0.0
+                if dist >= self._wp_drive_dist:
                     self.cmd_pub.publish(Twist())
                     self.get_logger().info(
-                        f'Waypoint reached ({dist:.3f}m) — turning to face marker...'
+                        f'Waypoint reached ({dist:.3f}m) — rotating to face marker...'
                     )
-                    self.state = 'turn_face'
+                    self.state = 'rotate_to_face'
                     return
 
                 cmd = Twist()
                 cmd.linear.x = self.lin_speed
                 self.cmd_pub.publish(cmd)
                 self.get_logger().info(
-                    f'Align drive: {dist:.3f}/{self._align_drive_dist:.3f}m'
+                    f'Waypoint drive: {dist:.3f}/{self._wp_drive_dist:.3f}m'
                 )
 
-        # ── STEP 2: Rotate in place to face the marker squarely ──
-        elif self.state == 'turn_face':
-            marker_age = (now - self.last_marker_time) if self.last_marker_time else 999
-            if marker_age > self.marker_timeout:
-                # After lateral drive, marker is off to the side — rotate back to find it
-                cmd = Twist()
-                cmd.angular.z = -self._align_spin_dir * 0.2
-                self.cmd_pub.publish(cmd)
-                self.get_logger().warn('Turn face: marker lost — searching...')
-                return
-
-            x, z = self.last_marker_x, self.last_marker_z
-            angle_error = math.atan2(x, max(z, 0.01))
-
-            if abs(angle_error) < self.yaw_threshold:
+        # ── STEP 2: Rotate in place to face the marker ──
+        #
+        # face_heading = initial robot yaw (locked in step 1).
+        # This works because the waypoint was placed along the original approach axis,
+        # so the marker is always directly ahead at approach_offset distance.
+        elif self.state == 'rotate_to_face':
+            yaw_err = self._angle_diff(self._face_heading, self.current_yaw)
+            if abs(yaw_err) < self.yaw_threshold:
                 self.cmd_pub.publish(Twist())
-                self.get_logger().info('Facing marker — starting visual approach...')
                 self.aligned_count = 0
-                self.state = 'visual_approach'
+                marker_age = (now - self.last_marker_time) if self.last_marker_time else 999
+                if marker_age <= self.marker_timeout:
+                    self.get_logger().info('Facing marker — starting visual approach...')
+                    self.state = 'visual_approach'
+                else:
+                    # Marker not visible: we are approach_offset in front of it, drive that minus stop_dist
+                    self.drive_distance = max(0.0, self.approach_offset - self.stop_dist)
+                    self.start_x, self.start_y = self.current_x, self.current_y
+                    self.get_logger().info(
+                        f'Marker not visible after rotation — odom drive {self.drive_distance:.3f}m'
+                    )
+                    self.state = 'odom_drive'
                 return
 
             cmd = Twist()
-            cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, 1.5 * angle_error))
+            cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, 2.0 * yaw_err))
             self.cmd_pub.publish(cmd)
-            self.get_logger().info(
-                f'Turn face: angle={math.degrees(angle_error):.1f}° x={x:.3f}m'
-            )
+            self.get_logger().info(f'Rotate to face: yaw_err={math.degrees(yaw_err):.1f}°')
 
-        # ── STEP 3: Visual drive straight to stop_dist, odom fallback on marker loss ──
+        # ── STEP 3: Visual approach with lateral correction ──
+        #
+        # If marker is lost mid-approach, fall back to odom using last known z.
         elif self.state == 'visual_approach':
             marker_age = (now - self.last_marker_time) if self.last_marker_time else 999
 
             if marker_age > self.marker_timeout:
-                if 0.0 < self.last_marker_z < 0.35:
-                    # Close enough — commit to odom straight drive for the remainder
-                    self.drive_distance = max(0.0, self.last_marker_z - self.stop_dist)
-                    self.start_x, self.start_y = self.current_x, self.current_y
-                    self.aligned_count = 0
-                    self.state = 'odom_drive'
-                    self.get_logger().info(
-                        f'Marker lost at {self.last_marker_z:.3f}m — finishing on odom '
-                        f'({self.drive_distance:.3f}m remaining).'
-                    )
-                else:
-                    self.cmd_pub.publish(Twist())
-                    self.get_logger().warn('Visual approach: marker lost — waiting...')
+                self.drive_distance = max(0.0, self.last_marker_z - self.stop_dist)
+                self.start_x, self.start_y = self.current_x, self.current_y
+                self.aligned_count = 0
+                self.state = 'odom_drive'
+                self.get_logger().info(
+                    f'Marker lost at z={self.last_marker_z:.3f}m — '
+                    f'finishing on odom ({self.drive_distance:.3f}m remaining).'
+                )
                 return
 
             z, x = self.last_marker_z, self.last_marker_x
 
             if z <= self.stop_dist:
                 self.cmd_pub.publish(Twist())
-                self.get_logger().info(f'Docked at {z:.3f}m!')
+                self.get_logger().info(f'Docked at z={z:.3f}m!')
                 self.state = 'docked'
                 self.on_docked()
                 return
@@ -282,20 +286,18 @@ class DockingBase(Node):
             cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, 2.0 * x))
 
             if abs(x) > self.x_threshold:
-                # Still off-centre — creep forward while correcting
-                cmd.linear.x = 0.02
+                cmd.linear.x = 0.02   # creep while correcting lateral error
                 self.aligned_count = 0
             else:
                 self.aligned_count += 1
                 cmd.linear.x = min(self.lin_speed, max(0.02, 0.3 * (z - self.stop_dist)))
                 self.get_logger().info(
-                    f'Visual approach ({self.aligned_count}/{self.aligned_frames_needed}) '
-                    f'z={z:.3f}m'
+                    f'Visual approach ({self.aligned_count}/{self.aligned_frames_needed}) z={z:.3f}m'
                 )
 
             self.cmd_pub.publish(cmd)
 
-        # ── STEP 4: Odom straight-drive fallback ──
+        # ── STEP 4: Odom fallback — drive pre-computed distance straight ahead ──
         elif self.state == 'odom_drive':
             dist = math.sqrt(
                 (self.current_x - self.start_x) ** 2
@@ -319,15 +321,12 @@ class DockingBase(Node):
         self.state = 'idle'
         self.aligned_count = 0
         self.last_marker_time = None
-        self._align_phase = 'turn_to_target'
-        self._align_target_yaw = None
-        self._align_target_world_x = 0.0
-        self._align_target_world_y = 0.0
-        self._align_drive_dist = 0.0
+        self._wp_computed = False
+        self._wp_phase = 'turn'
         self.cmd_pub.publish(Twist())
 
     def _normalize_angle(self, angle):
-        while angle > math.pi: angle -= 2 * math.pi
+        while angle > math.pi:  angle -= 2 * math.pi
         while angle < -math.pi: angle += 2 * math.pi
         return angle
 
