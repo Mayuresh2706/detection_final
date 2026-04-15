@@ -18,42 +18,48 @@ class DockingNode(Node):
         self.current_y = 0.0
         self.current_yaw = 0.0
 
-        # State machine: idle -> docking -> odom_drive (substates) -> docked
+        # State machine:
+        #   idle        -> not active
+        #   locate      -> active, waiting for first marker sighting (plan once)
+        #   go_to_normal-> driving to closest point on the marker's normal line
+        #   search      -> turning to face the marker; if seen, switch to visual
+        #   visual      -> visual servo toward marker until stop_dist
+        #   blind_drive -> drive straight the pre-computed distance, no marker
+        #   docked
         self.state = 'idle'
-        self.odom_substate = 'approach'
 
         # Tuning
-        self.stop_dist = 0.05       
-        self.lin_speed = 0.06       
-        self.ang_gain = 2.0         
-        self.ang_speed = 0.3        
+        self.stop_dist = 0.05
+        self.lin_speed = 0.06
+        self.ang_gain = 2.0
+        self.ang_speed = 0.3
         self.marker_timeout = 0.3
-        self.align_tolerance = 0.08  # radians (~5 degrees)
-        self.dock_timeout = 60.0     # give up on docking after this many seconds
+        self.align_tolerance = 0.08     # radians (~5 deg)
+        self.reach_tolerance = 0.03     # meters — "arrived" at normal line point
+        self.dock_timeout = 60.0
 
-        # Marker data (z=forward, x=left(lateral), bearing=0(facing away)->180(facing robot))
+        # Latest marker data
         self.last_marker_z = 0.0
         self.last_marker_x = 0.0
         self.last_marker_bearing = 0.0
         self.last_marker_time = None
 
-        # Robot pose snapshot captured at the moment of the last marker detection
-        # (so normal-line math uses the pose that was true when the marker was seen).
+        # Pose snapshot at first sighting — used for the one-shot plan
         self.snap_x = 0.0
         self.snap_y = 0.0
         self.snap_yaw = 0.0
 
-        self.dock_activated_time = None
-
-        # Odom drive targets
+        # One-shot plan (computed on first marker sighting, never updated)
+        self.plan_valid = False
         self.target_x = 0.0         # closest point on normal line (odom frame)
         self.target_y = 0.0
-        self.final_yaw = 0.0        # direction to face marker
-        self.final_dist = 0.0       # distance from closest point to marker
-        
-        self.odom_start_x = 0.0     # for tracking drive_in progress
+        self.final_yaw = 0.0        # yaw to face marker from target point
+        self.final_dist = 0.0       # distance from target point to marker
+
+        self.odom_start_x = 0.0     # set when blind_drive begins
         self.odom_start_y = 0.0
 
+        self.dock_activated_time = None
         self.is_active = False
 
         # Publishers
@@ -70,7 +76,6 @@ class DockingNode(Node):
         self.get_logger().info('Docking node ready')
 
     def bearing_callback(self, msg):
-        """Store bearing: 0=marker faces away, 180=marker faces robot."""
         if self.is_active:
             self.last_marker_bearing = msg.data
 
@@ -78,11 +83,10 @@ class DockingNode(Node):
         was_active = self.is_active
         self.is_active = msg.data
         if self.is_active and not was_active:
-            # Rising edge — fresh docking attempt
             self.dock_marker_id = None
             self.last_marker_time = None
-            self.state = 'docking'
-            self.odom_substate = 'approach'
+            self.plan_valid = False
+            self.state = 'locate'
             self.dock_activated_time = self.get_clock().now().nanoseconds / 1e9
             self.get_logger().info('Activated')
         elif not self.is_active and was_active:
@@ -99,7 +103,6 @@ class DockingNode(Node):
         self.current_yaw = math.atan2(siny, cosy)
 
     def marker_callback(self, msg):
-        # frame_id encodes "camera_link:<marker_id>" from pnp_node
         parts = msg.header.frame_id.split(':', 1)
         if len(parts) != 2:
             return
@@ -108,7 +111,6 @@ class DockingNode(Node):
         except ValueError:
             return
 
-        # Only process if it's our target (or first target seen)
         if self.dock_marker_id is not None and marker_id != self.dock_marker_id:
             return
         if self.dock_marker_id is None and marker_id not in self.target_ids:
@@ -120,16 +122,22 @@ class DockingNode(Node):
             self.dock_marker_id = marker_id
             self.get_logger().info(f'Locked onto marker {marker_id}')
 
-        # z=forward, x=left (from target_3d remapping)
         self.last_marker_z = msg.pose.position.x
         self.last_marker_x = msg.pose.position.y
         self.last_marker_time = self.get_clock().now().nanoseconds / 1e9
 
-        # Snapshot pose at detection time so normal-line math doesn't drift
-        # with later robot motion after the marker is lost.
-        self.snap_x = self.current_x
-        self.snap_y = self.current_y
-        self.snap_yaw = self.current_yaw
+        # Plan once on first sighting — this is the whole point of the simpler flow.
+        if not self.plan_valid and self.last_marker_z > 0.0:
+            self.snap_x = self.current_x
+            self.snap_y = self.current_y
+            self.snap_yaw = self.current_yaw
+            self._plan_normal_approach()
+            self.plan_valid = True
+            self.state = 'go_to_normal'
+            self.get_logger().info(
+                f'Plan: drive to ({self.target_x:.2f},{self.target_y:.2f}), '
+                f'then face yaw={math.degrees(self.final_yaw):.0f}° and advance {self.final_dist:.2f}m'
+            )
 
     def drive_callback(self):
         if not self.is_active:
@@ -141,8 +149,7 @@ class DockingNode(Node):
 
         now = self.get_clock().now().nanoseconds / 1e9
 
-        # Global docking watchdog: if we've been at it too long without finishing,
-        # bail out and tell the mission manager so it can reset-to-explore.
+        # Global watchdog
         if self.dock_activated_time is not None:
             if (now - self.dock_activated_time) > self.dock_timeout:
                 self._stop_cmd()
@@ -155,129 +162,115 @@ class DockingNode(Node):
                 return
 
         marker_age = (now - self.last_marker_time) if self.last_marker_time else 999.0
+        marker_fresh = marker_age <= self.marker_timeout
 
-        # ── Visual Servo (marker visible) ───────────────────────────────────────
-        if self.state == 'docking':
-            if marker_age > self.marker_timeout:
-                # Marker lost — switch to normal approach using last sighting
-                if self.last_marker_time and self.last_marker_z > 0.0:
-                    self._calculate_normal_approach()
-                    self.state = 'odom_drive'
-                    self.odom_substate = 'approach'
-                    self.get_logger().info(
-                        f'Marker lost at z={self.last_marker_z:.2f}m, '
-                        f'switching to normal approach (final_dist={self.final_dist:.2f}m)')
-                else:
-                    self._stop_cmd()
+        if self.state == 'locate':
+            # Sit still until marker_callback captures first sighting and plans.
+            self._stop_cmd()
+            return
+
+        if self.state == 'go_to_normal':
+            dx = self.target_x - self.current_x
+            dy = self.target_y - self.current_y
+            dist = math.hypot(dx, dy)
+
+            if dist < self.reach_tolerance:
+                self.state = 'search'
+                self.get_logger().info('Reached normal line — turning to find marker')
+                return
+
+            target_yaw = math.atan2(dy, dx)
+            yaw_err = self._norm(target_yaw - self.current_yaw)
+
+            cmd = Twist()
+            cmd.linear.x = min(self.lin_speed, 0.4 * dist)
+            cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, self.ang_gain * yaw_err))
+            self.cmd_pub.publish(cmd)
+            return
+
+        if self.state == 'search':
+            # Rotate toward the planned final_yaw (≈90° from approach). If the
+            # marker pops into view during the turn, chase it. Otherwise commit
+            # to the blind drive using the one-shot plan.
+            if marker_fresh and self.last_marker_z > 0.0:
+                self.state = 'visual'
+                self.get_logger().info('Marker reacquired — visual servo')
+                return
+
+            yaw_err = self._norm(self.final_yaw - self.current_yaw)
+            if abs(yaw_err) < self.align_tolerance:
+                if self.final_dist <= self.stop_dist:
+                    self._dock()
+                    return
+                self.state = 'blind_drive'
+                self.odom_start_x = self.current_x
+                self.odom_start_y = self.current_y
+                self.get_logger().info(
+                    f'Marker not found after turn — blind drive {self.final_dist:.2f}m'
+                )
+                return
+
+            cmd = Twist()
+            cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, 3.0 * yaw_err))
+            self.cmd_pub.publish(cmd)
+            return
+
+        if self.state == 'visual':
+            if not marker_fresh:
+                # Lost mid-servo → fall back to the initial plan.
+                self.state = 'blind_drive'
+                self.odom_start_x = self.current_x
+                self.odom_start_y = self.current_y
+                self.get_logger().info('Marker lost during servo — falling back to blind drive')
                 return
 
             z, x = self.last_marker_z, self.last_marker_x
-            
             if z <= self.stop_dist:
                 self._dock()
                 return
 
-            # Simple proportional control toward marker
             cmd = Twist()
             cmd.linear.x = min(self.lin_speed, max(0.02, 0.3 * (z - self.stop_dist)))
             cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, self.ang_gain * x))
             self.cmd_pub.publish(cmd)
+            return
 
-        # ── Normal Line Approach (marker lost) ───────────────────────────────────
-        elif self.state == 'odom_drive':
-            # Resume visual servo if marker returns
-            if marker_age <= self.marker_timeout:
-                self.state = 'docking'
-                self.odom_substate = 'approach'
-                self.get_logger().info('Marker reacquired')
+        if self.state == 'blind_drive':
+            driven = math.hypot(self.current_x - self.odom_start_x,
+                                self.current_y - self.odom_start_y)
+            if driven >= self.final_dist - self.stop_dist:
+                self._dock()
                 return
+            cmd = Twist()
+            cmd.linear.x = self.lin_speed
+            self.cmd_pub.publish(cmd)
 
-            if self.odom_substate == 'approach':
-                # Drive to closest point on normal line
-                dx = self.target_x - self.current_x
-                dy = self.target_y - self.current_y
-                dist = math.hypot(dx, dy)
-                target_yaw = math.atan2(dy, dx)
-                yaw_err = self._norm(target_yaw - self.current_yaw)
-
-                if dist < 0.03:  # Reached the normal line
-                    self.odom_substate = 'align'
-                    self.get_logger().info('Reached normal line, aligning')
-                    return
-
-                cmd = Twist()
-                cmd.linear.x = min(self.lin_speed, 0.4 * dist)
-                cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, self.ang_gain * yaw_err))
-                self.cmd_pub.publish(cmd)
-
-            elif self.odom_substate == 'align':
-                # Turn to face the marker (along normal line)
-                yaw_err = self._norm(self.final_yaw - self.current_yaw)
-
-                if abs(yaw_err) < self.align_tolerance:
-                    if self.final_dist < 0.02:  # Already close enough
-                        self._dock()
-                        return
-                    self.odom_substate = 'drive_in'
-                    self.odom_start_x, self.odom_start_y = self.current_x, self.current_y
-                    self.get_logger().info(f'Aligned, driving in {self.final_dist:.2f}m')
-                    return
-
-                cmd = Twist()
-                cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, 3.0 * yaw_err))
-                self.cmd_pub.publish(cmd)
-
-            elif self.odom_substate == 'drive_in':
-                # Drive straight along normal to marker
-                driven = math.hypot(self.current_x - self.odom_start_x, 
-                                   self.current_y - self.odom_start_y)
-                
-                if driven >= self.final_dist - self.stop_dist:
-                    self._dock()
-                else:
-                    cmd = Twist()
-                    cmd.linear.x = self.lin_speed
-                    self.cmd_pub.publish(cmd)
-
-    def _calculate_normal_approach(self):
-        """
-        Calculate right-triangle path via closest point on marker's normal line.
-        
-        Robot at (x0,y0,yaw0), marker at relative (z, x) where x is left.
-        Bearing β: angle of marker normal in robot frame (0=away, 180=toward).
-        """
-        # Use pose captured at detection time, not current pose — the robot may
-        # have moved between the last sighting and the transition to odom_drive.
+    def _plan_normal_approach(self):
         x0, y0, yaw0 = self.snap_x, self.snap_y, self.snap_yaw
-        z = self.last_marker_z      # forward distance to marker
-        x = self.last_marker_x      # lateral distance to marker (left=positive)
+        z = self.last_marker_z
+        x = self.last_marker_x
         beta = math.radians(self.last_marker_bearing)
-        
+
         # Marker position in odom frame
         mx = x0 + z * math.cos(yaw0) - x * math.sin(yaw0)
         my = y0 + z * math.sin(yaw0) + x * math.cos(yaw0)
-        
-        # Normal line direction in odom
+
+        # Normal line through the marker
         normal_yaw = yaw0 + beta
         nx, ny = math.cos(normal_yaw), math.sin(normal_yaw)
-        
-        # Closest point on normal line to current robot position
-        # t = projection of (robot - marker) onto normal
+
+        # Closest point on that line to the robot
         t = (x0 - mx) * nx + (y0 - my) * ny
-        
         self.target_x = mx + t * nx
         self.target_y = my + t * ny
         self.final_dist = abs(t)
-        
-        # Direction to face to drive toward marker from closest point
-        # If t>0, we're behind marker (relative to normal), face opposite to normal
-        # If t<0, we're beyond marker, face along normal
-        self.final_yaw = self._norm(normal_yaw + (math.pi if t > 0 else 0))
+        self.final_yaw = self._norm(normal_yaw + (math.pi if t > 0 else 0.0))
 
     def _norm(self, angle):
-        """Normalize to [-pi, pi]."""
-        while angle > math.pi: angle -= 2 * math.pi
-        while angle < -math.pi: angle += 2 * math.pi
+        while angle > math.pi:
+            angle -= 2 * math.pi
+        while angle < -math.pi:
+            angle += 2 * math.pi
         return angle
 
     def _dock(self):
