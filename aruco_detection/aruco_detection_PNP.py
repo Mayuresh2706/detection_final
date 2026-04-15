@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, Float32
 from geometry_msgs.msg import PoseStamped
 import cv2
 import numpy as np
@@ -13,6 +13,7 @@ class ArucoSub_Pub(Node):
         self.subscription = self.create_subscription(
             Float32MultiArray, 'target_pixels', self.listener_callback, 10)
         self.publisher_ = self.create_publisher(PoseStamped, 'target_3d', 10)
+        self.angle_publisher_ = self.create_publisher(Float32, 'marker_normal_angle', 10)
 
         cal_path = os.path.join(os.path.dirname(__file__), 'camera_calibration.npz')
         data = np.load(cal_path)
@@ -41,10 +42,18 @@ class ArucoSub_Pub(Node):
             self.obj_points, corners, self.mtx, self.dist, flags=cv2.SOLVEPNP_IPPE_SQUARE)
 
         if success:
-            self.publish_pose(tvec, rvec,marker_id)
-            print(f"Marker id = {marker_id}")
+            R, _ = cv2.Rodrigues(rvec)
+            normal_cam = R @ np.array([0.0, 0.0, 1.0])
+            # Remap to robot frame (same mapping as tvec)
+            normal_robot_x = normal_cam[2]    # camera Z → robot X (forward)
+            normal_robot_y = -normal_cam[0]   # camera X → robot Y (lateral)
+            angle_rad = np.arctan2(normal_robot_y, normal_robot_x)
+            angle_deg = float(np.degrees(angle_rad))
 
-    def publish_pose(self, tvec, rvec,id):
+            self.publish_pose(tvec, rvec, marker_id, angle_deg)
+            print(f"Marker id = {marker_id}, normal angle = {angle_deg:.2f} deg")
+
+    def publish_pose(self, tvec, rvec, id, angle_deg):
         pose_msg = PoseStamped()
 
         pose_msg.header.frame_id = "camera_link"
@@ -60,6 +69,10 @@ class ArucoSub_Pub(Node):
         pose_msg.pose.orientation.w = float(id)
 
         self.publisher_.publish(pose_msg)
+
+        angle_msg = Float32()
+        angle_msg.data = angle_deg
+        self.angle_publisher_.publish(angle_msg)
 
 
 def main(args=None):
