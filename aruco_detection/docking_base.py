@@ -30,12 +30,12 @@ class DockingNode(Node):
 
         # Tuning
         self.stop_dist = 0.01
-        self.lin_speed = 0.06
+        self.lin_speed = 0.08
         self.ang_gain = 2.0
         self.ang_speed = 0.3
         self.marker_timeout = 0.3
         self.align_tolerance = 0.03     # radians (~5 deg)
-        self.reach_tolerance = 0.02     # meters — "arrived" at normal line point
+        self.reach_tolerance = 0.01     # meters — "arrived" at normal line point
         self.dock_timeout = 60.0
 
         # Latest marker data
@@ -56,6 +56,7 @@ class DockingNode(Node):
         self.target_y = 0.0
         self.final_yaw = 0.0        # yaw to face marker from target point
         self.final_dist = 0.0       # distance from target point to marker
+        self.aimed_at_waypoint = False  # set True after pivoting to face waypoint
 
         self.odom_start_x = 0.0     # set when blind_drive begins
         self.odom_start_y = 0.0
@@ -137,6 +138,7 @@ class DockingNode(Node):
             self.snap_yaw = self.current_yaw
             self._plan_normal_approach()
             self.plan_valid = True
+            self.aimed_at_waypoint = False
             self.state = 'go_to_normal'
             self.get_logger().info(
                 f'Plan: marker(z={self.last_marker_z:.2f}, x={self.last_marker_x:.2f}, '
@@ -195,13 +197,21 @@ class DockingNode(Node):
             yaw_err = self._norm(target_yaw - self.current_yaw)
 
             cmd = Twist()
-            # Turn in place until roughly aligned, then drive straight. Avoids
-            # the wide tangential arc where the camera swings away from the
-            # marker.
-            if abs(yaw_err) > 0.2:  # ~11°
-                cmd.linear.x = 0.0
-            else:
-                cmd.linear.x = min(self.lin_speed, 0.4 * dist)
+            if not self.aimed_at_waypoint:
+                # Phase 1: pivot in place until pointing at the waypoint.
+                if abs(yaw_err) < self.align_tolerance:
+                    self.aimed_at_waypoint = True
+                    self.get_logger().info(
+                        f'Aimed at waypoint (yaw_err={math.degrees(yaw_err):.1f}°) — driving straight'
+                    )
+                else:
+                    cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, self.ang_gain * yaw_err))
+                self.cmd_pub.publish(cmd)
+                return
+
+            # Phase 2: drive straight. Light yaw correction to counter drift,
+            # but we keep moving forward — don't re-enter pivot mode.
+            cmd.linear.x = min(self.lin_speed, 0.4 * dist)
             cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, self.ang_gain * yaw_err))
             self.cmd_pub.publish(cmd)
             return
