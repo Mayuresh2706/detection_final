@@ -446,14 +446,8 @@ class DockingBase(Node):
                 self.cmd_pub.publish(cmd)
 
     def on_docked(self):
-        # Restore full mission signals
-        fire_msg = Bool()
-        fire_msg.data = True
-        self.fire_pub.publish(fire_msg)
-        
-        status_msg = String()
-        status_msg.data = "docked"
-        self.status_pub.publish(status_msg)
+        # Overridden by subclasses (Task_A_Main, Task_B_Main).
+        pass
 
     def stop_robot(self):
         self.state = 'idle'

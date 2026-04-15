@@ -25,6 +25,13 @@ def generate_launch_description():
             name='mission_manager',
             output='screen'
         ),
+
+        Node(
+            package='my_explorer',
+            executable='run_explorer',
+            name='simple_explorer',
+            output='screen'
+        ),
  
         Node(
             package='aruco_detection',

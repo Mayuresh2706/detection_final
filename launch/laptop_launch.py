@@ -28,6 +28,13 @@ def generate_launch_description():
         ),
 
         Node(
+            package='my_explorer',
+            executable='run_explorer',
+            name='simple_explorer',
+            output='screen'
+        ),
+
+        Node(
             package='aruco_detection',
             executable='task_a_node',
             name='task_a_node',

@@ -9,9 +9,9 @@ class Task_B_Controller(DockingBase):
         super().__init__('task_b_node', dock_marker_id=2)
         self.create_subscription(Bool, '/task_b_active', self.active_cb, 10)
 
-        # Pendulum tracking state
-        self.last_marker_x = None
-        self.last_marker_time = None
+        # Pendulum tracking state (use distinct names to avoid base-class conflicts)
+        self.pendulum_x = None
+        self.pendulum_time = None
         self.zero_crossings = []
         self.period_samples = []
         self.period = None
@@ -22,8 +22,8 @@ class Task_B_Controller(DockingBase):
 
     def on_docked(self):
         self.state = 'tracking'
-        self.last_marker_x = None
-        self.last_marker_time = None
+        self.pendulum_x = None
+        self.pendulum_time = None
         self.zero_crossings = []
         self.period_samples = []
         self.period = None
@@ -41,9 +41,9 @@ class Task_B_Controller(DockingBase):
         marker_x = msg.pose.position.x
         now = self.get_clock().now().nanoseconds / 1e9
 
-        if self.last_marker_x is not None:
+        if self.pendulum_x is not None:
             # Detect a zero crossing
-            if self.last_marker_x * marker_x < 0:
+            if self.pendulum_x * marker_x < 0:
                 if not self.zero_crossings or (now - self.zero_crossings[-1] > 0.1):
                     self.zero_crossings.append(now)
 
@@ -54,7 +54,7 @@ class Task_B_Controller(DockingBase):
             if len(self.period_samples) == 3:
                 self.period = sum(self.period_samples) / len(self.period_samples)
 
-            if self.last_marker_x * marker_x < 0:
+            if self.pendulum_x * marker_x < 0:
                 if self.period is not None and self.period > 0 and self.shots_fired < 3:
                     self.shots_fired += 1
                     self.get_logger().info(f'FIRE {self.shots_fired}/3 at zero crossing')
@@ -67,8 +67,8 @@ class Task_B_Controller(DockingBase):
                     self.status_pub.publish(msg_out)
                     self.stop_robot()
 
-        self.last_marker_x = marker_x
-        self.last_marker_time = now
+        self.pendulum_x = marker_x
+        self.pendulum_time = now
 
     def stop_robot(self):
         super().stop_robot()
@@ -76,7 +76,8 @@ class Task_B_Controller(DockingBase):
         self.zero_crossings = []
         self.period_samples = []
         self.period = None
-        self.last_marker_x = None
+        self.pendulum_x = None
+        self.pendulum_time = None
 
 
 def main(args=None):
