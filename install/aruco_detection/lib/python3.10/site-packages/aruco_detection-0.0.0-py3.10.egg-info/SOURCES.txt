@@ -19,9 +19,9 @@ build/aruco_detection/aruco_detection.egg-info/entry_points.txt
 build/aruco_detection/aruco_detection.egg-info/requires.txt
 build/aruco_detection/aruco_detection.egg-info/top_level.txt
 build/aruco_detection/aruco_detection.egg-info/zip-safe
-launch/aruco_launch.py
-launch/laptop_launch.py
+launch/laptop.launch.py
 launch/laptop_launch_no_nav.py
+launch/rpi.launch.py
 launch/rpi_launch.py
 resource/aruco_detection
 test/test_copyright.py

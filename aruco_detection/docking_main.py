@@ -151,8 +151,11 @@ class MissionManager(Node):
             goal_msg.pose.pose.orientation.z = math.sin(angle / 2.0)
             goal_msg.pose.pose.orientation.w = math.cos(angle / 2.0)
 
+            if not self.nav_client.server_is_ready():
+                self.get_logger().warn('navigate_to_pose server not ready, skipping approach')
+                return
+
             self.approach_in_progress = True
-            self.nav_client.wait_for_server()
             self.nav_client.send_goal_async(goal_msg).add_done_callback(self.nav_response_cb)
 
         except Exception as e:
@@ -224,8 +227,13 @@ class MissionManager(Node):
 def main():
     rclpy.init()
     node = MissionManager()
-    rclpy.spin(node)
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        node.get_logger().info('Manual Shutdown')
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

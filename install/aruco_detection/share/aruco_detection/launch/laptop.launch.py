@@ -28,14 +28,8 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': 'false',
             'params_file': nav2_params,
-            'slam': 'True',
-            'use_rviz': 'false',
+            'slam': 'False'
         }.items()
-    )
-
-    rviz_config = os.path.join(
-        get_package_share_directory('turtlebot3_cartographer'),
-        'rviz', 'tb3_cartographer.rviz'
     )
 
     return LaunchDescription([
@@ -43,12 +37,10 @@ def generate_launch_description():
         nav2,
 
         ExecuteProcess(
-            cmd=['rviz2', '-d', rviz_config],
-            output='screen',
-            additional_env={
-                'LD_PRELOAD': '/lib/x86_64-linux-gnu/libpthread.so.0',
-                'QT_QPA_PLATFORM': 'xcb',
-            }
+            cmd=['rviz2', '-d',
+                 os.path.join(get_package_share_directory('turtlebot3_cartographer'),
+                              'rviz', 'tb3_cartographer.rviz')],
+            output='screen'
         ),
 
         Node(

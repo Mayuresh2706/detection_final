@@ -1,0 +1,26 @@
+running egg_info
+writing build/aruco_detection/aruco_detection.egg-info/PKG-INFO
+writing dependency_links to build/aruco_detection/aruco_detection.egg-info/dependency_links.txt
+writing entry points to build/aruco_detection/aruco_detection.egg-info/entry_points.txt
+writing requirements to build/aruco_detection/aruco_detection.egg-info/requires.txt
+writing top-level names to build/aruco_detection/aruco_detection.egg-info/top_level.txt
+reading manifest file 'build/aruco_detection/aruco_detection.egg-info/SOURCES.txt'
+writing manifest file 'build/aruco_detection/aruco_detection.egg-info/SOURCES.txt'
+running build
+running build_py
+running install
+running install_lib
+running install_data
+copying launch/laptop.launch.py -> /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/aruco_detection/launch
+copying launch/rpi.launch.py -> /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/aruco_detection/launch
+running install_egg_info
+removing '/home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/python3.10/site-packages/aruco_detection-0.0.0-py3.10.egg-info' (and everything under it)
+Copying build/aruco_detection/aruco_detection.egg-info to /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/python3.10/site-packages/aruco_detection-0.0.0-py3.10.egg-info
+running install_scripts
+Installing camera_node script to /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/aruco_detection
+Installing mission_manager script to /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/aruco_detection
+Installing pnp_node script to /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/aruco_detection
+Installing servo_node script to /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/aruco_detection
+Installing task_a_node script to /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/aruco_detection
+Installing task_b_node script to /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/aruco_detection
+writing list of installed files to '/home/yammmyu/turtlebot3_ws/src/detection_final/build/aruco_detection/install.log'

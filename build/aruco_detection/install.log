@@ -20,10 +20,10 @@
 /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/python3.10/site-packages/aruco_detection/__pycache__/aruco_detection.cpython-310.pyc
 /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/ament_index/resource_index/packages/aruco_detection
 /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/aruco_detection/package.xml
-/home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/aruco_detection/launch/aruco_launch.py
-/home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/aruco_detection/launch/laptop_launch.py
 /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/aruco_detection/launch/laptop_launch_no_nav.py
 /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/aruco_detection/launch/rpi_launch.py
+/home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/aruco_detection/launch/laptop.launch.py
+/home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/share/aruco_detection/launch/rpi.launch.py
 /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/python3.10/site-packages/aruco_detection/camera_calibration.npz
 /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/python3.10/site-packages/aruco_detection-0.0.0-py3.10.egg-info/top_level.txt
 /home/yammmyu/turtlebot3_ws/src/detection_final/install/aruco_detection/lib/python3.10/site-packages/aruco_detection-0.0.0-py3.10.egg-info/requires.txt
