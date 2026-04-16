@@ -37,25 +37,35 @@ class ArucoSub_Pub(Node):
         corners = np.array(data[:8]).reshape((4, 1, 2)).astype(np.float32)
         marker_id = int(data[8])
 
-
-        success, rvec, tvec = cv2.solvePnP(
+        # Use solvePnPGeneric to get ALL possible solutions — smaller markers
+        # make the IPPE ambiguity much worse, so we need to pick the right one.
+        ret, rvecs, tvecs, reproj_errs = cv2.solvePnPGeneric(
             self.obj_points, corners, self.mtx, self.dist, flags=cv2.SOLVEPNP_IPPE_SQUARE)
 
-        if success:
-            
-            R, _ = cv2.Rodrigues(rvec)
+        if ret > 0:
+            best_rvec = rvecs[0]
+            best_tvec = tvecs[0]
 
-            # Use -1.0 to get the vector pointing FROM the marker TO the camera
-            normal_cam = R @ np.array([0.0, 0.0, -1.0])
+            R, _ = cv2.Rodrigues(best_rvec)
+            normal_cam = R @ np.array([0.0, 0.0, 1.0])
+
+            # Ambiguity fix: in camera frame Z is forward. A marker facing the
+            # camera must have its normal pointing back (negative Z in camera
+            # frame). If Z is positive the solution is "inside-out" — use the
+            # second one instead.
+            if normal_cam[2] > 0 and len(rvecs) > 1:
+                best_rvec = rvecs[1]
+                best_tvec = tvecs[1]
+                R, _ = cv2.Rodrigues(best_rvec)
+                normal_cam = R @ np.array([0.0, 0.0, 1.0])
 
             normal_robot_x = normal_cam[2]
             normal_robot_y = -normal_cam[0]
 
-            # 0 = marker faces away from robot, ±pi = marker faces the robot
             angle_rad = np.arctan2(normal_robot_y, normal_robot_x)
             angle_deg = float(np.degrees(angle_rad))
 
-            self.publish_pose(tvec, marker_id, angle_deg)
+            self.publish_pose(best_tvec, marker_id, angle_deg)
 
     def publish_pose(self, tvec, marker_id, angle_deg):
         pose_msg = PoseStamped()

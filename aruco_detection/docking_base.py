@@ -29,7 +29,7 @@ class DockingNode(Node):
         self.state = 'idle'
 
         # Tuning
-        self.stop_dist = 0.01
+        self.stop_dist = 0.1
         self.lin_speed = 0.08
         self.ang_gain = 2.0
         self.ang_speed = 0.3
@@ -254,12 +254,20 @@ class DockingNode(Node):
                 return
 
             z, x = self.last_marker_z, self.last_marker_x
+            self.get_logger().info(
+                f'Visual: z={z:.3f} x={x:.3f} bearing={self.last_marker_bearing:.1f}° '
+                f'age={marker_age:.2f}s',
+                throttle_duration_sec=0.5
+            )
             if z <= self.stop_dist:
                 self._dock()
                 return
 
             cmd = Twist()
-            cmd.linear.x = min(self.lin_speed, max(0.02, 0.3 * (z - self.stop_dist)))
+            # Scale down forward speed when laterally misaligned so the
+            # robot prioritises centering before closing distance.
+            x_scale = max(0.0, 1.0 - 4.0 * abs(x) / max(z, 0.01))
+            cmd.linear.x = x_scale * min(self.lin_speed, max(self.min_lin_speed, 0.3 * (z - self.stop_dist)))
             cmd.angular.z = max(-self.ang_speed, min(self.ang_speed, self.ang_gain * x))
             self.cmd_pub.publish(cmd)
             return

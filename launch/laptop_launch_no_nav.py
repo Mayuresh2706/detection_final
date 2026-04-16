@@ -20,12 +20,12 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # mission_manager is omitted — it requires the map TF frame (cartographer/nav2).
-        # Trigger docking manually:
-        #   ros2 topic pub /dock_active std_msgs/msg/Bool "data: true"
-        # Then trigger the task after docking completes:
-        #   ros2 topic pub /task_a_active std_msgs/msg/Bool "data: true"   (marker 1)
-        #   ros2 topic pub /task_b_active std_msgs/msg/Bool "data: true"   (marker 2)
+        Node(
+            package='aruco_detection',
+            executable='docking_no_nav',
+            name='docking_no_nav',
+            output='screen'
+        ),
 
         Node(
             package='aruco_detection',

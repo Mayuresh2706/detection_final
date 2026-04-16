@@ -36,6 +36,7 @@ setup(
             'task_a_node = aruco_detection.Task_A_Main:main',
             'task_b_node = aruco_detection.Task_B_Main:main',
             'mission_manager = aruco_detection.docking_main:main',
+            'docking_no_nav = aruco_detection.docking_no_nav:main',
             'servo_node = aruco_detection.servo_node:main',
         ],
     },

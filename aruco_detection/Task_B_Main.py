@@ -28,7 +28,13 @@ class Task_B_Controller(Node):
             self.tracking = False
 
     def _pendulum_callback(self, msg):
-        marker_id = int(msg.pose.orientation.w)
+        parts = msg.header.frame_id.split(':', 1)
+        if len(parts) != 2:
+            return
+        try:
+            marker_id = int(parts[1])
+        except ValueError:
+            return
 
         if marker_id != 3:
             return
