@@ -21,7 +21,7 @@ class ArucoSub_Pub(Node):
         self.dist = data['dist']
 
         # Outer border size: 125mm
-        self.marker_size = 0.125
+        self.marker_size = 0.050
 
         self.obj_points = np.array([
         [-self.marker_size/2,  self.marker_size/2, 0],

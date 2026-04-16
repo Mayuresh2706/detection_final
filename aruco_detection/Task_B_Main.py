@@ -34,19 +34,18 @@ class Task_B_Controller(Node):
             return
         if not self.tracking:
             return
-        if self.shots_fired >= 3:
+        if self.shots_fired >= 1:
             return
 
         self.shots_fired += 1
-        self.get_logger().info(f'FIRE {self.shots_fired}/3 — marker 3 seen')
+        self.get_logger().info(f'FIRE — marker 3 seen')
         self.fire_pub.publish(Bool(data=True))
 
-        if self.shots_fired == 3:
-            self.get_logger().info('All shots fired. Reporting SUCCESS.')
-            self.tracking = False
-            msg_out = String()
-            msg_out.data = 'SUCCESS'
-            self.status_pub.publish(msg_out)
+        self.get_logger().info('Shot fired. Reporting SUCCESS.')
+        self.tracking = False
+        msg_out = String()
+        msg_out.data = 'SUCCESS'
+        self.status_pub.publish(msg_out)
 
 
 def main(args=None):
