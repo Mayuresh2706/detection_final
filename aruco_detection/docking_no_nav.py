@@ -45,7 +45,17 @@ class DockingNoNav(Node):
         if self.state != 'WAITING':
             return
 
-        self.get_logger().info(f'Marker ID {marker_id} detected! Starting docking...')
+        # Only trigger docking if the marker is close enough
+        max_dock_distance = 1.0  # metres
+        p = msg.pose.position
+        dist = math.sqrt(p.x ** 2 + p.y ** 2 + p.z ** 2)
+        if dist > max_dock_distance:
+            self.get_logger().info(
+                f'Marker ID {marker_id} seen at {dist:.2f}m — too far (>{max_dock_distance}m), ignoring'
+            )
+            return
+
+        self.get_logger().info(f'Marker ID {marker_id} detected at {dist:.2f}m! Starting docking...')
         self.detected_marker_id = marker_id
         self.state = 'DOCKING'
         self.docking_start_time = self.get_clock().now().nanoseconds / 1e9
