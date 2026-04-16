@@ -29,7 +29,7 @@ class DockingNode(Node):
         self.state = 'idle'
 
         # Tuning
-        self.stop_dist = 0.1
+        self.stop_dist = 0.10
         self.lin_speed = 0.08
         self.ang_gain = 2.0
         self.ang_speed = 0.3
@@ -246,11 +246,14 @@ class DockingNode(Node):
 
         if self.state == 'visual':
             if not marker_fresh:
-                # Lost mid-servo → fall back to the initial plan.
+                # Lost mid-servo → fall back using the last seen distance.
                 self.state = 'blind_drive'
                 self.odom_start_x = self.current_x
                 self.odom_start_y = self.current_y
-                self.get_logger().info('Marker lost during servo — falling back to blind drive')
+                self.final_dist = self.last_marker_z
+                self.get_logger().info(
+                    f'Marker lost during servo — blind drive {self.final_dist:.2f}m'
+                )
                 return
 
             z, x = self.last_marker_z, self.last_marker_x
