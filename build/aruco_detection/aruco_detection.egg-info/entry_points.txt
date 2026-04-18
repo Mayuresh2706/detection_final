@@ -1,5 +1,7 @@
 [console_scripts]
 camera_node = aruco_detection.aruco_detection:main
+docking_no_nav = aruco_detection.docking_no_nav:main
+docking_node = aruco_detection.docking_base:main
 mission_manager = aruco_detection.docking_main:main
 pnp_node = aruco_detection.aruco_detection_PNP:main
 servo_node = aruco_detection.servo_node:main

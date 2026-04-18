@@ -1,0 +1,7 @@
+[0.000000] (-) TimerEvent: {}
+[0.000605] (aruco_detection) JobQueued: {'identifier': 'aruco_detection', 'dependencies': OrderedDict()}
+[0.000915] (aruco_detection) JobStarted: {'identifier': 'aruco_detection'}
+[0.099705] (-) TimerEvent: {}
+[0.200126] (-) TimerEvent: {}
+[0.240523] (aruco_detection) JobEnded: {'identifier': 'aruco_detection', 'rc': 0}
+[0.250939] (-) EventReactorShutdown: {}

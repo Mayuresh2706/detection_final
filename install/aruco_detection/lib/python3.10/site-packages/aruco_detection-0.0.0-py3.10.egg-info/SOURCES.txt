@@ -9,6 +9,7 @@ aruco_detection/aruco_detection_PNP.py
 aruco_detection/camera_calibration.npz
 aruco_detection/docking_base.py
 aruco_detection/docking_main.py
+aruco_detection/docking_no_nav.py
 aruco_detection/servo.py
 aruco_detection/servo_node.py
 aruco_detection/test.py
@@ -22,7 +23,6 @@ build/aruco_detection/aruco_detection.egg-info/zip-safe
 launch/laptop.launch.py
 launch/laptop_launch_no_nav.py
 launch/rpi.launch.py
-launch/rpi_launch.py
 resource/aruco_detection
 test/test_copyright.py
 test/test_flake8.py

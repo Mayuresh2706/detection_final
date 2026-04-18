@@ -2,7 +2,7 @@ from gpiozero import Servo
 import time
 
 # Calibrated: 90° at full speed = 0.43s
-DEG_PER_SEC = 90 / 0.40
+DEG_PER_SEC = 90 / 0.43
 SHOT_PAUSE  = 0.2
 
 

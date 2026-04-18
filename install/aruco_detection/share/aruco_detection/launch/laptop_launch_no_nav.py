@@ -22,6 +22,20 @@ def generate_launch_description():
 
         Node(
             package='aruco_detection',
+            executable='docking_no_nav',
+            name='docking_no_nav',
+            output='screen'
+        ),
+
+        Node(
+            package='aruco_detection',
+            executable='docking_node',
+            name='docking_node',
+            output='screen'
+        ),
+
+        Node(
+            package='aruco_detection',
             executable='task_a_node',
             name='task_a_node',
             output='screen'

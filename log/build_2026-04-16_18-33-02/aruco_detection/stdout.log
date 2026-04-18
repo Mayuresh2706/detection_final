@@ -1,0 +1,30 @@
+running egg_info
+writing build/aruco_detection/aruco_detection.egg-info/PKG-INFO
+writing dependency_links to build/aruco_detection/aruco_detection.egg-info/dependency_links.txt
+writing entry points to build/aruco_detection/aruco_detection.egg-info/entry_points.txt
+writing requirements to build/aruco_detection/aruco_detection.egg-info/requires.txt
+writing top-level names to build/aruco_detection/aruco_detection.egg-info/top_level.txt
+reading manifest file 'build/aruco_detection/aruco_detection.egg-info/SOURCES.txt'
+writing manifest file 'build/aruco_detection/aruco_detection.egg-info/SOURCES.txt'
+running build
+running build_py
+copying aruco_detection/docking_no_nav.py -> /home/mayuresh/turtlebot3_ws/src/aruco_detection/build/aruco_detection/build/lib/aruco_detection
+running install
+running install_lib
+copying /home/mayuresh/turtlebot3_ws/src/aruco_detection/build/aruco_detection/build/lib/aruco_detection/docking_no_nav.py -> /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/python3.10/site-packages/aruco_detection
+byte-compiling /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/python3.10/site-packages/aruco_detection/docking_no_nav.py to docking_no_nav.cpython-310.pyc
+running install_data
+copying launch/laptop_launch_no_nav.py -> /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/share/aruco_detection/launch
+running install_egg_info
+removing '/home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/python3.10/site-packages/aruco_detection-0.0.0-py3.10.egg-info' (and everything under it)
+Copying build/aruco_detection/aruco_detection.egg-info to /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/python3.10/site-packages/aruco_detection-0.0.0-py3.10.egg-info
+running install_scripts
+Installing camera_node script to /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/aruco_detection
+Installing docking_no_nav script to /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/aruco_detection
+Installing docking_node script to /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/aruco_detection
+Installing mission_manager script to /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/aruco_detection
+Installing pnp_node script to /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/aruco_detection
+Installing servo_node script to /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/aruco_detection
+Installing task_a_node script to /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/aruco_detection
+Installing task_b_node script to /home/mayuresh/turtlebot3_ws/src/aruco_detection/install/aruco_detection/lib/aruco_detection
+writing list of installed files to '/home/mayuresh/turtlebot3_ws/src/aruco_detection/build/aruco_detection/install.log'
