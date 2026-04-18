@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file using Convention
 
 
 ### Summary
-Active development on `experimental_docking` branch with focus on docking mechanisms, navigation, and task execution. Total of 64 commits from 2 contributors (yammmyu, Mayuresh2706).
+Active development on `experimental_docking` branch with focus on docking mechanisms, navigation, and task execution. Total of 61 commits from 2 contributors (yammmyu, Mayuresh2706).
 
 ### All Commits (experimental_docking branch)
 
@@ -74,10 +74,6 @@ Active development on `experimental_docking` branch with focus on docking mechan
 | b3f830d | refactor | 2.8.0 | 2026-04-16 | yammmyu | changed to head straight towards normal |
 | d49afcc | docs | 2.8.0 | 2026-04-16 | yammmyu | added more logs for debugging |
 | e93c3c0 | feat | 2.9.0 | 2026-04-16 | yammmyu | direct approach docking |
-| fc5fec9 | docs | 2.9.0 | 2026-04-18 | Mayuresh2706 | changelog added |
-| f651fa4 | feat | 2.3.0 | 2026-04-16 | yammmyu | new |
-| fc5fec9 | docs | 2.3.0 | 2026-04-18 | Mayuresh2706 | changelog added |
-
 ### Recent Changes (Branch: experimental_docking)
 
 #### Features & Enhancements
