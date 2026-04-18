@@ -1,7 +1,11 @@
+
+Note that although this branch is named experimental_docking, it is the main branch for our detection and shooting code
+
+
+
 # Changelog
 
 All notable changes to this project are documented in this file using Conventional Commits and Semantic Versioning.
-
 
 ### Summary
 Active development on `experimental_docking` branch with focus on docking mechanisms, navigation, and task execution. Total of 61 commits from 2 contributors (yammmyu, Mayuresh2706).
